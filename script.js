@@ -1,33 +1,23 @@
 const $ = (id) => document.getElementById(id);
 
-
 /* =========================
    ELEMENTS
 ========================= */
 
 const fileInput = $("fileInput");
 const dropZone = $("dropZone");
-
 const video = $("video");
-
 const workspace = $("workspace");
-
 const statusTitle = $("statusTitle");
 const statusText = $("statusText");
-
 const fileInfo = $("fileInfo");
-
 const convertButton = $("convertButton");
 const resetButton = $("resetButton");
-
 const progressContainer = $("progressContainer");
 const progressFill = $("progressFill");
-
 const progressText = $("progressText");
 const progressPercent = $("progressPercent");
-
 const result = $("result");
-
 const gifPreview = $("gifPreview");
 const downloadButton = $("downloadButton");
 
@@ -37,10 +27,9 @@ const downloadButton = $("downloadButton");
 ========================= */
 
 let originalFile = null;
-
 let videoBlob = null;
-
 let videoURL = null;
+let gifURL = null;
 
 
 /* =========================
@@ -48,11 +37,8 @@ let videoURL = null;
 ========================= */
 
 function setStatus(title, text) {
-
     statusTitle.textContent = title;
-
     statusText.textContent = text;
-
 }
 
 
@@ -61,7 +47,6 @@ function setStatus(title, text) {
 ========================= */
 
 function formatBytes(bytes) {
-
     if (bytes === 0) {
         return "0 B";
     }
@@ -74,8 +59,7 @@ function formatBytes(bytes) {
     ];
 
     const index = Math.floor(
-        Math.log(bytes) /
-        Math.log(1024)
+        Math.log(bytes) / Math.log(1024)
     );
 
     return (
@@ -84,7 +68,18 @@ function formatBytes(bytes) {
         + " "
         + units[index]
     );
+}
 
+
+/* =========================
+   FILE EXTENSION
+========================= */
+
+function getExtension(file) {
+    return file.name
+        .split(".")
+        .pop()
+        .toLowerCase();
 }
 
 
@@ -93,15 +88,53 @@ function formatBytes(bytes) {
 ========================= */
 
 function isValidFile(file) {
-
     if (!file) {
         return false;
     }
 
-    return /\.(livp|mov|mp4|webm)$/i.test(
+    return /\.(livp|heic|heif|jpg|jpeg|mov|mp4|webm)$/i.test(
         file.name
     );
+}
 
+
+/* =========================
+   IS VIDEO
+========================= */
+
+function isVideoFile(file) {
+    if (!file) {
+        return false;
+    }
+
+    return /\.(mov|mp4|webm)$/i.test(
+        file.name
+    );
+}
+
+
+/* =========================
+   IS IMAGE
+========================= */
+
+function isLivePhotoImage(file) {
+    if (!file) {
+        return false;
+    }
+
+    return /\.(heic|heif|jpg|jpeg)$/i.test(
+        file.name
+    );
+}
+
+
+/* =========================
+   IS LIVP
+========================= */
+
+function isLIVP(file) {
+    return file &&
+        /\.livp$/i.test(file.name);
 }
 
 
@@ -112,47 +145,33 @@ function isValidFile(file) {
 async function extractLIVP(file) {
 
     if (!window.JSZip) {
-
         throw new Error(
             "JSZip failed to load. Check your internet connection."
         );
-
     }
-
 
     /*
-        Apple .LIVP files are ZIP archives
-        containing the Live Photo's MOV file.
+        A .LIVP is a package containing
+        the Live Photo image and MOV.
     */
 
-    const zip =
-        await JSZip.loadAsync(file);
+    const zip = await JSZip.loadAsync(file);
 
+    const entries = Object.values(zip.files);
 
-    const entries =
-        Object.values(zip.files);
-
-
-    const movFile =
-        entries.find(
-            entry =>
-                !entry.dir &&
-                /\.mov$/i.test(entry.name)
-        );
-
+    const movFile = entries.find(
+        (entry) =>
+            !entry.dir &&
+            /\.mov$/i.test(entry.name)
+    );
 
     if (!movFile) {
-
         throw new Error(
-            "No MOV video was found inside this LIVP."
+            "No MOV video was found inside this Live Photo."
         );
-
     }
 
-
-    const movData =
-        await movFile.async("blob");
-
+    const movData = await movFile.async("blob");
 
     return new Blob(
         [movData],
@@ -160,21 +179,150 @@ async function extractLIVP(file) {
             type: "video/quicktime"
         }
     );
-
 }
 
 
 /* =========================
-   LOAD FILE
+   FIND MOV FROM MULTIPLE FILES
 ========================= */
 
-async function loadFile(file) {
+function findLivePhotoVideo(files) {
 
-    if (!isValidFile(file)) {
+    /*
+        When an iPhone Live Photo is exported,
+        Windows can give you:
+
+        IMG_1234.HEIC
+        IMG_1234.MOV
+
+        We only need the MOV for the GIF.
+    */
+
+    const movie = files.find(
+        (file) => isVideoFile(file)
+    );
+
+    if (!movie) {
+        return null;
+    }
+
+    return movie;
+}
+
+
+/* =========================
+   LOAD VIDEO INTO PLAYER
+========================= */
+
+async function loadVideoBlob(blob) {
+
+    if (videoURL) {
+        URL.revokeObjectURL(videoURL);
+        videoURL = null;
+    }
+
+    videoBlob = blob;
+
+    videoURL = URL.createObjectURL(
+        videoBlob
+    );
+
+    video.src = videoURL;
+    video.load();
+
+    await new Promise(
+        (resolve, reject) => {
+
+            let finished = false;
+
+            const loaded = () => {
+
+                if (finished) {
+                    return;
+                }
+
+                finished = true;
+
+                cleanup();
+
+                resolve();
+            };
+
+            const failed = () => {
+
+                if (finished) {
+                    return;
+                }
+
+                finished = true;
+
+                cleanup();
+
+                reject(
+                    new Error(
+                        "Your browser cannot decode this Live Photo video. The MOV may use HEVC/H.265."
+                    )
+                );
+            };
+
+            const cleanup = () => {
+
+                video.removeEventListener(
+                    "loadedmetadata",
+                    loaded
+                );
+
+                video.removeEventListener(
+                    "error",
+                    failed
+                );
+            };
+
+            video.addEventListener(
+                "loadedmetadata",
+                loaded,
+                {
+                    once: true
+                }
+            );
+
+            video.addEventListener(
+                "error",
+                failed,
+                {
+                    once: true
+                }
+            );
+        }
+    );
+}
+
+
+/* =========================
+   LOAD FILES
+========================= */
+
+async function loadFiles(files) {
+
+    files = Array.from(files);
+
+    if (!files.length) {
+        return;
+    }
+
+    /*
+        Remove invalid files.
+    */
+
+    const validFiles = files.filter(
+        (file) => isValidFile(file)
+    );
+
+    if (!validFiles.length) {
 
         setStatus(
             "Unsupported file",
-            "Use a .LIVP, .MOV, .MP4 or .WEBM file."
+            "Use a .LIVP, .HEIC + .MOV, .JPEG + .MOV, .MOV, .MP4 or .WEBM file."
         );
 
         return;
@@ -182,17 +330,23 @@ async function loadFile(file) {
 
 
     /*
-        200 MB maximum.
+        Maximum size.
     */
 
+    const totalSize = validFiles.reduce(
+        (total, file) =>
+            total + file.size,
+        0
+    );
+
     if (
-        file.size >
+        totalSize >
         200 * 1024 * 1024
     ) {
 
         setStatus(
-            "File is too large",
-            "Maximum file size is 200 MB."
+            "Files are too large",
+            "Maximum total file size is 200 MB."
         );
 
         return;
@@ -202,157 +356,150 @@ async function loadFile(file) {
     try {
 
         setStatus(
-            "Loading...",
-            file.name
-                .toLowerCase()
-                .endsWith(".livp")
-                ? "Extracting the video from your Live Photo..."
-                : "Preparing your video..."
+            "Loading Live Photo...",
+            "Preparing your file."
         );
 
 
-        originalFile = file;
+        /*
+            CASE 1:
+            .LIVP
+        */
+
+        const livpFile =
+            validFiles.find(
+                (file) => isLIVP(file)
+            );
+
+
+        if (livpFile) {
+
+            originalFile = livpFile;
+
+            setStatus(
+                "Reading Live Photo...",
+                "Extracting the motion from your .LIVP file..."
+            );
+
+            const blob =
+                await extractLIVP(
+                    livpFile
+                );
+
+            await loadVideoBlob(
+                blob
+            );
+
+            showReady(
+                livpFile,
+                "LIVP Live Photo"
+            );
+
+            return;
+        }
 
 
         /*
-            If LIVP:
-            extract the MOV.
+            CASE 2:
+            HEIC/JPEG + MOV
 
-            Otherwise:
-            use the video directly.
+            Example:
+
+            IMG_1234.HEIC
+            IMG_1234.MOV
         */
+
+        const movieFile =
+            findLivePhotoVideo(
+                validFiles
+            );
+
+        const imageFile =
+            validFiles.find(
+                (file) =>
+                    isLivePhotoImage(file)
+            );
+
 
         if (
-            /\.livp$/i.test(
-                file.name
-            )
+            movieFile &&
+            imageFile
         ) {
 
-            videoBlob =
-                await extractLIVP(file);
+            originalFile =
+                imageFile;
 
-        } else {
+            setStatus(
+                "Reading Live Photo...",
+                `${imageFile.name} + ${movieFile.name}`
+            );
 
-            videoBlob = file;
+            /*
+                The GIF only needs the
+                motion component.
+            */
 
+            await loadVideoBlob(
+                movieFile
+            );
+
+            showReady(
+                imageFile,
+                "Live Photo · HEIC/JPEG + MOV"
+            );
+
+            return;
         }
 
 
         /*
-            Create temporary browser URL.
+            CASE 3:
+            Direct video
         */
 
-        if (videoURL) {
+        if (movieFile) {
 
-            URL.revokeObjectURL(
-                videoURL
+            originalFile =
+                movieFile;
+
+            setStatus(
+                "Loading video...",
+                "Preparing your video."
             );
 
+            await loadVideoBlob(
+                movieFile
+            );
+
+            showReady(
+                movieFile,
+                "Video"
+            );
+
+            return;
         }
 
 
-        videoURL =
-            URL.createObjectURL(
-                videoBlob
-            );
-
-
-        video.src = videoURL;
-
-        video.load();
-
-
         /*
-            Wait for browser to read video.
+            Image only
         */
 
-        await new Promise(
-            (resolve, reject) => {
+        if (imageFile) {
 
-                const loaded = () => {
-
-                    cleanup();
-
-                    resolve();
-
-                };
-
-
-                const failed = () => {
-
-                    cleanup();
-
-                    reject(
-                        new Error(
-                            "Your browser cannot decode this video's codec."
-                        )
-                    );
-
-                };
-
-
-                function cleanup() {
-
-                    video.removeEventListener(
-                        "loadedmetadata",
-                        loaded
-                    );
-
-                    video.removeEventListener(
-                        "error",
-                        failed
-                    );
-
-                }
-
-
-                video.addEventListener(
-                    "loadedmetadata",
-                    loaded,
-                    {
-                        once: true
-                    }
-                );
-
-
-                video.addEventListener(
-                    "error",
-                    failed,
-                    {
-                        once: true
-                    }
-                );
-
-            }
-        );
-
-
-        workspace.classList.remove(
-            "hidden"
-        );
-
-
-        result.classList.add(
-            "hidden"
-        );
-
-
-        fileInfo.textContent =
-            `${file.name} · ${formatBytes(file.size)}` +
-            (
-                /\.livp$/i.test(file.name)
-                    ? " · MOV extracted from LIVP"
-                    : ""
+            setStatus(
+                "Live Photo video missing",
+                "Select the matching .MOV file together with your HEIC/JPEG."
             );
 
+            return;
+        }
 
-        setStatus(
-            "Ready to convert",
-            "Choose your settings and click Convert to GIF."
+
+        throw new Error(
+            "No usable video was found."
         );
 
     }
-
     catch (error) {
 
         console.error(error);
@@ -365,9 +512,34 @@ async function loadFile(file) {
             "Could not read this file",
             error.message
         );
-
     }
+}
 
+
+/* =========================
+   SHOW READY
+========================= */
+
+function showReady(
+    file,
+    type
+) {
+
+    workspace.classList.remove(
+        "hidden"
+    );
+
+    result.classList.add(
+        "hidden"
+    );
+
+    fileInfo.textContent =
+        `${file.name} · ${formatBytes(file.size)} · ${type}`;
+
+    setStatus(
+        "Ready to convert",
+        "Choose your settings and click Convert to GIF."
+    );
 }
 
 
@@ -379,15 +551,12 @@ fileInput.addEventListener(
     "change",
     (event) => {
 
-        const file =
-            event.target.files[0];
+        const files =
+            event.target.files;
 
-        if (file) {
-
-            loadFile(file);
-
+        if (files.length) {
+            loadFiles(files);
         }
-
     }
 );
 
@@ -400,7 +569,7 @@ fileInput.addEventListener(
     "dragenter",
     "dragover"
 ].forEach(
-    eventName => {
+    (eventName) => {
 
         dropZone.addEventListener(
             eventName,
@@ -411,10 +580,8 @@ fileInput.addEventListener(
                 dropZone.classList.add(
                     "dragging"
                 );
-
             }
         );
-
     }
 );
 
@@ -423,7 +590,7 @@ fileInput.addEventListener(
     "dragleave",
     "drop"
 ].forEach(
-    eventName => {
+    (eventName) => {
 
         dropZone.addEventListener(
             eventName,
@@ -434,10 +601,8 @@ fileInput.addEventListener(
                 dropZone.classList.remove(
                     "dragging"
                 );
-
             }
         );
-
     }
 );
 
@@ -446,15 +611,12 @@ dropZone.addEventListener(
     "drop",
     (event) => {
 
-        const file =
-            event.dataTransfer.files[0];
+        const files =
+            event.dataTransfer.files;
 
-        if (file) {
-
-            loadFile(file);
-
+        if (files.length) {
+            loadFiles(files);
         }
-
     }
 );
 
@@ -489,7 +651,16 @@ resetButton.addEventListener(
             );
 
             videoURL = null;
+        }
 
+
+        if (gifURL) {
+
+            URL.revokeObjectURL(
+                gifURL
+            );
+
+            gifURL = null;
         }
 
 
@@ -500,11 +671,14 @@ resetButton.addEventListener(
         video.load();
 
 
+        originalFile = null;
+        videoBlob = null;
+
+
         setStatus(
             "Waiting for a file",
             "Your file stays on your device."
         );
-
     }
 );
 
@@ -519,7 +693,6 @@ function createFrame(width) {
         video.videoHeight /
         video.videoWidth;
 
-
     const height =
         Math.round(
             width * aspectRatio
@@ -533,7 +706,6 @@ function createFrame(width) {
 
 
     canvas.width = width;
-
     canvas.height = height;
 
 
@@ -553,7 +725,111 @@ function createFrame(width) {
 
 
     return canvas;
+}
 
+
+/* =========================
+   WAIT FOR SEEK
+========================= */
+
+function seekVideo(time) {
+
+    return new Promise(
+        (resolve, reject) => {
+
+            let finished = false;
+
+            const cleanup = () => {
+
+                video.removeEventListener(
+                    "seeked",
+                    onSeeked
+                );
+
+                video.removeEventListener(
+                    "error",
+                    onError
+                );
+            };
+
+
+            const done = () => {
+
+                if (finished) {
+                    return;
+                }
+
+                finished = true;
+
+                cleanup();
+
+                resolve();
+            };
+
+
+            const onSeeked = () => {
+                done();
+            };
+
+
+            const onError = () => {
+
+                if (finished) {
+                    return;
+                }
+
+                finished = true;
+
+                cleanup();
+
+                reject(
+                    new Error(
+                        "Could not seek through the video."
+                    )
+                );
+            };
+
+
+            video.addEventListener(
+                "seeked",
+                onSeeked,
+                {
+                    once: true
+                }
+            );
+
+
+            video.addEventListener(
+                "error",
+                onError,
+                {
+                    once: true
+                }
+            );
+
+
+            video.currentTime =
+                time;
+
+
+            /*
+                Some browsers seek instantly.
+            */
+
+            if (
+                Math.abs(
+                    video.currentTime -
+                    time
+                ) < 0.02
+            ) {
+
+                setTimeout(
+                    done,
+                    20
+                );
+            }
+        }
+    );
 }
 
 
@@ -570,8 +846,12 @@ convertButton.addEventListener(
             !video.videoWidth
         ) {
 
-            return;
+            setStatus(
+                "No video loaded",
+                "Please choose a Live Photo first."
+            );
 
+            return;
         }
 
 
@@ -583,7 +863,6 @@ convertButton.addEventListener(
             "hidden"
         );
 
-
         result.classList.add(
             "hidden"
         );
@@ -591,7 +870,6 @@ convertButton.addEventListener(
 
         progressFill.style.width =
             "0%";
-
 
         progressPercent.textContent =
             "0%";
@@ -624,8 +902,7 @@ convertButton.addEventListener(
 
 
         /*
-            Don't make enormous GIFs.
-            15 seconds maximum.
+            Maximum GIF duration.
         */
 
         const duration =
@@ -658,9 +935,7 @@ convertButton.addEventListener(
 
 
         if (reverse) {
-
             times.reverse();
-
         }
 
 
@@ -674,10 +949,10 @@ convertButton.addEventListener(
 
         const gif =
             new GIF({
-
                 workers: 2,
 
-                quality: quality,
+                quality:
+                    quality,
 
                 width:
                     firstCanvas.width,
@@ -692,7 +967,6 @@ convertButton.addEventListener(
 
                 workerScript:
                     "https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js"
-
             });
 
 
@@ -712,46 +986,18 @@ convertButton.addEventListener(
                     times[i];
 
 
-                video.currentTime =
-                    time;
-
-
-                await new Promise(
-                    resolve => {
-
-                        if (
-                            Math.abs(
-                                video.currentTime -
-                                time
-                            ) < 0.02
-                        ) {
-
-                            resolve();
-
-                            return;
-
-                        }
-
-
-                        video.addEventListener(
-                            "seeked",
-                            resolve,
-                            {
-                                once: true
-                            }
-                        );
-
-                    }
+                await seekVideo(
+                    time
                 );
 
 
                 /*
-                    Give the browser one frame
-                    to render after seeking.
+                    Give browser a frame
+                    to render.
                 */
 
                 await new Promise(
-                    resolve =>
+                    (resolve) =>
                         requestAnimationFrame(
                             resolve
                         )
@@ -759,7 +1005,9 @@ convertButton.addEventListener(
 
 
                 const canvas =
-                    createFrame(width);
+                    createFrame(
+                        width
+                    );
 
 
                 gif.addFrame(
@@ -793,22 +1041,21 @@ convertButton.addEventListener(
 
 
                 progressText.textContent =
-                    "Reading frames...";
-
+                    "Reading Live Photo frames...";
             }
 
 
-            progressText.textContent =
-                "Encoding GIF...";
-
-
             /*
-                GIF encoder progress.
+                Encoding.
             */
+
+            progressText.textContent =
+                "Creating GIF...";
+
 
             gif.on(
                 "progress",
-                progress => {
+                (progress) => {
 
                     const percent =
                         85 +
@@ -823,7 +1070,6 @@ convertButton.addEventListener(
 
                     progressPercent.textContent =
                         percent + "%";
-
                 }
             );
 
@@ -836,7 +1082,15 @@ convertButton.addEventListener(
                 "finished",
                 (gifBlob) => {
 
-                    const gifURL =
+                    if (gifURL) {
+
+                        URL.revokeObjectURL(
+                            gifURL
+                        );
+                    }
+
+
+                    gifURL =
                         URL.createObjectURL(
                             gifBlob
                         );
@@ -852,11 +1106,12 @@ convertButton.addEventListener(
 
                     const originalName =
                         originalFile
-                            .name
-                            .replace(
-                                /\.[^/.]+$/,
-                                ""
-                            );
+                            ? originalFile.name
+                                .replace(
+                                    /\.[^/.]+$/,
+                                    ""
+                                )
+                            : "live-photo";
 
 
                     downloadButton.download =
@@ -885,11 +1140,16 @@ convertButton.addEventListener(
                         false;
 
 
+                    setStatus(
+                        "GIF created!",
+                        "Your Live Photo has been converted successfully."
+                    );
+
+
                     result.scrollIntoView({
                         behavior: "smooth",
                         block: "center"
                     });
-
                 }
             );
 
@@ -897,7 +1157,6 @@ convertButton.addEventListener(
             gif.render();
 
         }
-
         catch (error) {
 
             console.error(error);
@@ -913,10 +1172,8 @@ convertButton.addEventListener(
 
             setStatus(
                 "Conversion failed",
-                "Your browser may not support this video's codec. Try exporting the Live Photo as an MP4."
+                "Your browser may not support the Live Photo's video codec. Try using a MOV encoded with H.264."
             );
-
         }
-
     }
 );
