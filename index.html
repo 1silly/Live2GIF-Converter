@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Live2GIF — Live Photo to GIF</title>
+
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- LIVP / ZIP extraction -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+    <!-- GIF encoder -->
+    <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
+</head>
+
+<body>
+
+<div class="background-stars"></div>
+
+<header>
+    <div class="logo">
+        ✦ Live<span>2</span>GIF
+    </div>
+
+    <div class="private-badge">
+        🔒 PRIVATE
+    </div>
+</header>
+
+<main>
+
+    <section class="hero">
+
+        <div class="eyebrow">
+            APPLE LIVE PHOTO → GIF
+        </div>
+
+        <h1>
+            Turn your Live Photos
+            <br>
+            <span>into GIFs.</span>
+        </h1>
+
+        <p>
+            Convert your <strong>.LIVP</strong>, MOV, MP4 or WEBM files
+            into GIFs directly in your browser.
+        </p>
+
+    </section>
+
+
+    <section class="converter-card">
+
+        <!-- UPLOAD -->
+
+        <label class="drop-zone" id="dropZone">
+
+            <input
+                type="file"
+                id="fileInput"
+                accept=".livp,.mov,.mp4,.webm,video/quicktime,video/mp4,video/webm"
+            >
+
+            <div class="upload-icon">
+                ↑
+            </div>
+
+            <h2>
+                Choose a Live Photo
+            </h2>
+
+            <p>
+                or drag & drop your <strong>.LIVP</strong> file here
+            </p>
+
+            <small>
+                LIVP · MOV · MP4 · WEBM · MAX 200 MB
+            </small>
+
+        </label>
+
+
+        <!-- STATUS -->
+
+        <div class="status">
+
+            <strong id="statusTitle">
+                Waiting for a file
+            </strong>
+
+            <span id="statusText">
+                Your file stays on your device.
+            </span>
+
+        </div>
+
+
+        <!-- WORKSPACE -->
+
+        <div
+            class="workspace hidden"
+            id="workspace"
+        >
+
+            <div class="preview-box">
+
+                <div class="section-title">
+                    PREVIEW
+                </div>
+
+                <video
+                    id="video"
+                    controls
+                    playsinline
+                    muted
+                ></video>
+
+                <div
+                    class="file-info"
+                    id="fileInfo"
+                ></div>
+
+            </div>
+
+
+            <div class="settings-box">
+
+                <div class="section-title">
+                    GIF SETTINGS
+                </div>
+
+
+                <label>
+                    FPS
+
+                    <select id="fps">
+                        <option value="8">
+                            8 FPS — Small
+                        </option>
+
+                        <option
+                            value="12"
+                            selected
+                        >
+                            12 FPS — Smooth
+                        </option>
+
+                        <option value="15">
+                            15 FPS — Smoother
+                        </option>
+
+                        <option value="20">
+                            20 FPS — High Quality
+                        </option>
+                    </select>
+
+                </label>
+
+
+                <label>
+                    Width
+
+                    <select id="gifWidth">
+
+                        <option value="480">
+                            480px
+                        </option>
+
+                        <option
+                            value="640"
+                            selected
+                        >
+                            640px
+                        </option>
+
+                        <option value="800">
+                            800px
+                        </option>
+
+                        <option value="1080">
+                            1080px
+                        </option>
+
+                    </select>
+
+                </label>
+
+
+                <label>
+                    Quality
+
+                    <select id="quality">
+
+                        <option value="1">
+                            Best
+                        </option>
+
+                        <option
+                            value="5"
+                            selected
+                        >
+                            High
+                        </option>
+
+                        <option value="10">
+                            Balanced
+                        </option>
+
+                        <option value="20">
+                            Smaller File
+                        </option>
+
+                    </select>
+
+                </label>
+
+
+                <div class="checkboxes">
+
+                    <label class="checkbox">
+                        <input
+                            type="checkbox"
+                            id="reverse"
+                        >
+
+                        Reverse
+                    </label>
+
+
+                    <label class="checkbox">
+                        <input
+                            type="checkbox"
+                            id="loop"
+                            checked
+                        >
+
+                        Loop forever
+                    </label>
+
+                </div>
+
+
+                <button
+                    id="convertButton"
+                    class="convert-button"
+                >
+                    Convert to GIF →
+                </button>
+
+
+                <button
+                    id="resetButton"
+                    class="reset-button"
+                >
+                    Choose another file
+                </button>
+
+            </div>
+
+        </div>
+
+
+        <!-- PROGRESS -->
+
+        <div
+            class="progress-container hidden"
+            id="progressContainer"
+        >
+
+            <div class="progress-header">
+
+                <span id="progressText">
+                    Rendering GIF...
+                </span>
+
+                <span id="progressPercent">
+                    0%
+                </span>
+
+            </div>
+
+            <div class="progress-bar">
+
+                <div
+                    id="progressFill"
+                ></div>
+
+            </div>
+
+        </div>
+
+
+        <!-- RESULT -->
+
+        <div
+            class="result hidden"
+            id="result"
+        >
+
+            <div class="result-header">
+
+                <div>
+
+                    <div class="section-title">
+                        DONE
+                    </div>
+
+                    <h2>
+                        Your GIF is ready ✨
+                    </h2>
+
+                </div>
+
+
+                <a
+                    id="downloadButton"
+                    class="download-button"
+                    download="live-photo.gif"
+                >
+                    Download GIF
+                </a>
+
+            </div>
+
+
+            <img
+                id="gifPreview"
+                alt="Converted GIF"
+            >
+
+        </div>
+
+    </section>
+
+
+    <section class="features">
+
+        <div class="feature">
+
+            <strong>
+                🔒 Private
+            </strong>
+
+            <span>
+                Files stay on your device.
+            </span>
+
+        </div>
+
+
+        <div class="feature">
+
+            <strong>
+                ⚡ Fast
+            </strong>
+
+            <span>
+                No account required.
+            </span>
+
+        </div>
+
+
+        <div class="feature">
+
+            <strong>
+                🍎 LIVP Support
+            </strong>
+
+            <span>
+                Extracts the MOV from Apple Live Photos.
+            </span>
+
+        </div>
+
+    </section>
+
+</main>
+
+
+<footer>
+    Live2GIF · Live Photo converter
+</footer>
+
+
+<script src="script.js"></script>
+
+</body>
+</html>
